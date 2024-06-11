@@ -174,7 +174,7 @@ if __name__ == '__main__':
                                     + "Alternatively you can check for both LDAPS and LDAP (server signing) protections. This requires a successful LDAP bind.")
     parser.add_argument('-method', choices=['LDAPS','BOTH'], default='LDAPS', metavar="method", action='store',
                         help="LDAPS or BOTH - LDAPS checks for channel binding, BOTH checks for LDAP signing and LDAP channel binding [authentication required]")
-    parser.add_argument('-dc-ip', required=True, action='store',
+    parser.add_argument('-dc-ip', required=False, action='store',
                         help='DNS Nameserver on network. Any DC\'s IPv4 address should work.')
     parser.add_argument('-u', default='guest', metavar='username',action='store',
                         help='Domain username value.')
@@ -184,6 +184,8 @@ if __name__ == '__main__':
                         help='Domain username value.')
     parser.add_argument('-nthash', metavar='nthash',action='store',
                         help='NT hash of password')
+    parser.add_argument('-dcfile', required=False, action='store', help='Line delimeted list of domain controller hostnames (FQDN)')
+
     options = parser.parse_args()
     domainUser = options.u
 
@@ -193,9 +195,10 @@ if __name__ == '__main__':
         parser.print_help()
         sys.exit(1)
     
-    if options.dc_ip == None:
-        print("-dc-ip is required")
+    if options.dcfile is None and options.dc_ip is None:
+        print("-dc-ip or -dcfile is required")
         exit()
+
     if options.method == 'BOTH':
         if domainUser == 'guest':
             print("[i] Using BOTH method requires a username parameter")
@@ -210,10 +213,22 @@ if __name__ == '__main__':
 
     if options.method =='BOTH' and options.p == 'defaultpass' and options.nthash == None:   
         password = getpass.getpass(prompt="Password: ")
-    fqdn = InternalDomainFromAnonymousLdap(options.dc_ip)
 
+    if options.dcfile is not None:
+        try:
+            dcList = []
+            with open(options.dcfile, 'r') as file:
+                dcList = file.readlines()
+                dcList = [line.strip() for line in dcList]
+            firstDC = str(dcList[0])
+            fqdn = ".".join(firstDC.split('.')[1:])
 
-    dcList = ResolveDCs(options.dc_ip, fqdn)
+        except FileNotFoundError:
+            print(f"File not found: {options.file}")
+    else:
+        fqdn = InternalDomainFromAnonymousLdap(options.dc_ip)
+        dcList = ResolveDCs(options.dc_ip, fqdn)
+
     print("\n~Domain Controllers identified~")
     for dc in dcList:
         print("   " + dc)
@@ -239,9 +254,9 @@ if __name__ == '__main__':
                     print("                  may prevent an NTLM relay depending on the client's")
                     print("                  support for channel binding.")
                 elif ldapsChannelBindingAlwaysCheck == False and ldapsChannelBindingWhenSupportedCheck == False:
-                        print("      [+] (LDAPS) CHANNEL BINDING SET TO \"NEVER\"! PARTY TIME!")
+                        print("      [+] (LDAPS) CHANNEL BINDING SET TO \"NEVER\"!")
                 elif ldapsChannelBindingAlwaysCheck == True:
-                    print("      [-] (LDAPS) channel binding set to \"required\", no fun allowed")
+                    print("      [-] (LDAPS) channel binding set to \"required\"")
                 else:
                     print("\nSomething went wrong...")
                     print("For troubleshooting:\nldapsChannelBindingAlwaysCheck - " +str(ldapsChannelBindingAlwaysCheck)+"\nldapsChannelBindingWhenSupportedCheck: "+str(ldapsChannelBindingWhenSupportedCheck))
